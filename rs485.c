@@ -3,7 +3,7 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
-#define BAUD 9600
+#define BAUD 57600
 #define USE_U2X 1
 #define UBRR_CALC(baud,f_osc,u2x) (((uint32_t)(f_osc)/(8*(2-(u2x))*(uint32_t)(baud)))-1)
 
@@ -60,6 +60,11 @@ enum rs485_rx_state {
 	RS485_RX_SKIP_REPLY,
 };
 
+/* driver enable / receiver not-enable connected to port PD2 */
+#define PORT_DEnRE  PORTD
+#define BIT_DEnRE   _BV(2)
+#define DDR_DEnRE   DDRD
+
 unsigned char rs485_rxbuf[RS485_MAX_MSGSIZE];
 #define RS485_RXBUFP_BUSY 0x80
 static unsigned char rs485_rxbufp;
@@ -84,8 +89,9 @@ ISR(USART_RX_vect)
 		/* state != RS485_RX_PAYLOAD && state != RS485_RX_SKIP_PAYLOAD
 		   would be an error, but is ignored */
 		/* only mark message as received when it was addressed to us */
-		if (state == RS485_RX_PAYLOAD)  /* mark messages as received */
+		if (state == RS485_RX_PAYLOAD) { /* mark messages as received */
 			p |= RS485_RXBUFP_BUSY;
+		}
 		state = RS485_RX_IDLE;
 		break;
 	case ASCII_STX:
@@ -100,6 +106,9 @@ ISR(USART_RX_vect)
 		state |= RS485_ESC_FLAG;
 		break;
 	default:
+		if (state == RS485_RX_SKIP_REPLY || state == RS485_RX_SKIP_PAYLOAD)
+			goto out;
+
 		/* received a non-control character, only valid during address */
 		/* or payload, check if we had a ESC just before this character */
 		if (state & RS485_ESC_FLAG) {
@@ -123,33 +132,39 @@ ISR(USART_RX_vect)
 			} else {
 				rs485_rxbuf[p++] = c;
 			}
-		} else if (state == RS485_RX_SKIP_PAYLOAD ||
-			       state == RS485_RX_SKIP_REPLY
-		) {
-			/* ok, just ignore the payload */
 		} else {
 			/* received non-character while not waiting for
 			   address or payload */
 			state = RS485_RX_IDLE;
 		}
 	}
-
+out:
 	rs485_rx_state = state;
 	rs485_rxbufp = p;
 }
 
-unsigned char rs485_poll() {
+unsigned char
+rs485_poll() {
 	unsigned char p;
 
 	cli();
 	p = rs485_rxbufp;
-	if (p & RS485_RXBUFP_BUSY) {
-		rs485_rxbufp = 0;
-		sei();
-		return p & ~RS485_RXBUFP_BUSY;
-	}
+	if (p & RS485_RXBUFP_BUSY)
+		p &= ~RS485_RXBUFP_BUSY;
+	else
+		p = RS485_POLL_NOMSG;
 	sei();
-	return 0;
+	return p;
+}
+
+void
+rs485_rxok() {
+	unsigned char p;
+	cli();
+	p = rs485_rxbufp;
+	if (p & RS485_RXBUFP_BUSY)
+		rs485_rxbufp = 0;
+	sei();
 }
 
 enum rs485_tx_state {
@@ -170,7 +185,7 @@ ISR(USART_TX_vect)
 {
 	enum rs485_tx_state state = rs485_tx_state;
 	if (state == RS485_TX_END)
-		PORTA &= ~_BV(1);     /* disable RS485 TX */
+		PORT_DEnRE &= ~BIT_DEnRE;     /* disable RS485 TX */
 }
 
 /* data register empty */
@@ -179,32 +194,34 @@ ISR(USART_UDRE_vect)
 	enum rs485_tx_state state = rs485_tx_state;
 	unsigned char l = rs485_txbuflen;
 	unsigned char p = rs485_txbufp;
-	unsigned char c;
+	unsigned char c = 0xba;
 
 	switch (state) {
 	case RS485_TX_STX:
-		PORTA |= _BV(1); /* enable RS485 TX */
+		PORT_DEnRE |= BIT_DEnRE;
 		c = ASCII_STX;
 		p = 0;
-		goto state_after_payload_byte;
+		if (l)
+			state = RS485_TX_PAYLOAD;
+		else
+			state = RS485_TX_ETX;
+		break;
 	case RS485_TX_PAYLOAD:
 	case RS485_TX_ESC:
 		c = rs485_txbuf[p];
 		if (state == RS485_TX_ESC) {
+			state = RS485_TX_PAYLOAD;
 			c ^= ASCII_LOW;
 		} else {
 			if (c < ASCII_LOW) {
 				state = RS485_TX_ESC;
 				c = ASCII_ESC;
-			} else {
-				p++;
+				goto write_udr;
 			}
 		}
-state_after_payload_byte:
+		p++;
 		if (p >= l)
 			state = RS485_TX_ETX;
-		else
-			state = RS485_TX_PAYLOAD;
 		break;
 	case RS485_TX_ETX:
 		c = ASCII_ETX;
@@ -215,6 +232,7 @@ state_after_payload_byte:
 		UCSRB &= ~_BV(UDRIE); /* disable data register empty interrupt */
 		goto no_write_udr;
 	}
+write_udr:
 	UDR = c;
 no_write_udr:
 	rs485_tx_state = state;
@@ -242,8 +260,8 @@ rs485_init()
 	PORTD |=  _BV(0);  /* weak pullup on RxD */
 
 	/* PA1 = RX485 Tx Enable */
-	DDRA  |=  _BV(1);   /* PA1 = RS485 Tx Enable */
-	PORTA &= ~_BV(1);  /* disable RS485 TX */
+	DDR_DEnRE  |=  BIT_DEnRE;
+	PORT_DEnRE &= ~BIT_DEnRE;
 
 	UBRRL =  ubrr       & 0x00ff;
 	UBRRH = (ubrr >> 8) & 0x00ff;

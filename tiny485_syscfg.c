@@ -10,6 +10,7 @@ void
 tiny485_syscfg_init()
 {
 	eeprom_read_block(&tiny485_syscfg, NULL, sizeof(tiny485_syscfg));
+	tiny485_syscfg.nodeaddr = 0x40;
 }
 
 void
