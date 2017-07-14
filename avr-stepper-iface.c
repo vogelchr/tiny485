@@ -6,9 +6,21 @@
 #include <avr/interrupt.h>
 #include <string.h>
 
-#define CMD_PING        0x01
-#define CMD_SERVO       0x02
-#define CMD_QUERY_SERVO 0x03
+enum AVR_STEPPER_IFACE_CMDS {
+	CMD_PING,
+	CMD_SERVO,
+	CMD_QUERY_SERVO,
+	CMD_SET_NODEADDR,
+	CMD_SAVE_CONFIG
+};
+
+static void
+servo_pwm_update()
+{
+	ICR1 = tiny485_syscfg.servo.maxcnt;
+	OCR1A = tiny485_syscfg.servo.pwm1; /* 1ms */
+	OCR1B = tiny485_syscfg.servo.pwm2; /* 2ms */
+}
 
 static void
 servo_pwm_init()
@@ -16,9 +28,7 @@ servo_pwm_init()
 	/* Timer/Counter 1, with a 1/8 prescaler, servo duty time is
 	    20ms = 20000 usec */
 
-	ICR1 = 19999;
-	OCR1A = 1000; /* 1ms */
-	OCR1B = 2000; /* 2ms */
+	servo_pwm_update();
 
 	/* Fast PWM Mode, counting 0..ICR1:
 	   WGM13=1, WGM12=1, WGM11=1, WGM10=0
@@ -34,7 +44,6 @@ servo_pwm_init()
 	DDRB  |= _BV(4); /* PB4 = OC1B */
 	DDRB  |= _BV(3); /* PB3 = OC1A */
 }
-
 
 ISR(TIMER0_OVF_vect) {
 	PORTB ^= _BV(0);
@@ -65,10 +74,7 @@ main()
 
 	sei(); /* enable interrupts */
 
-	rs485_txbuf[0]='!';
-	rs485_txbuf[1]=tiny485_syscfg.nodeaddr;
-	rs485_start_tx(2);
-
+	/* main message handler loop */
 	while(1) {
 		msglen = rs485_poll();
 		if (msglen == RS485_POLL_NOMSG)
@@ -86,39 +92,59 @@ main()
 			goto rxok;
 		}
 
+		/* msglen is everything besides the first byte, but PING copies
+		   back the whole message, so we only subtract here... */
+		msglen--;
+
+		/* craft default reply for ack: <nodeaddr> <msgid> */
+		rs485_txbuf[0] = tiny485_syscfg.nodeaddr;
+		rs485_txbuf[1] = msgid;
+
+		/* CMD_SERVO + up to 6 bytes of syscfg.servo data */
 		if (msgid == CMD_SERVO) {
-			/* always write high first, low second, there's a
-			   temp storage register for the high byte, and the
-			   16bit storage is flushed when the low byte is written */
-			if (msglen < 2)
+			/* must be <= 6 bytes and an even number of bytes */
+			if (msglen > sizeof(tiny485_syscfg.servo) || (msglen & 0x01))
 				goto rxok;
-			OCR1AH = rs485_rxbuf[1];
-			OCR1AL = rs485_rxbuf[0];
-			if (msglen < 4)
-				goto rxok;
-			OCR1BH = rs485_rxbuf[3];
-			OCR1BL = rs485_rxbuf[2];
-			if (msglen < 6)
-				goto rxok;
-			ICR1H = rs485_rxbuf[5];
-			ICR1L = rs485_rxbuf[4];
+			memcpy(&tiny485_syscfg.servo, &rs485_rxbuf[1], msglen);
+			servo_pwm_update();
 			goto rxok;
 		}
 
 		if (msgid == CMD_QUERY_SERVO) {
-			rs485_txbuf[0] = OCR1AL;
-			rs485_txbuf[1] = OCR1AH;
-			rs485_txbuf[2] = OCR1BL;
-			rs485_txbuf[3] = OCR1BH;
-			rs485_txbuf[4] = ICR1L;
-			rs485_txbuf[5] = ICR1H;
-			rs485_start_tx(6);
+			memcpy(&rs485_txbuf+2, &tiny485_syscfg.servo,
+				sizeof(tiny485_syscfg.servo));
+			rs485_start_tx(2+sizeof(tiny485_syscfg.servo));
 			goto rxok;
 		}
 
-		rs485_txbuf[0] = '?';
-		rs485_txbuf[1] = rs485_rxbuf[0]; /* command not understood */
-		rs485_start_tx(2);
+		/* SET_NODEADDR has two parameters for safety. Use use
+		   address and the complement. */
+		if (msgid == CMD_SET_NODEADDR && msglen == 2) {
+			unsigned char a = rs485_rxbuf[1];
+			unsigned char b = rs485_rxbuf[2];
+			if (a != ~b)
+				goto invalidcmd;
+			tiny485_syscfg.nodeaddr = a;
+			rs485_start_tx(2); /* default ack reply */
+			goto rxok;
+		}
+
+		/* SAVE_CONFIG has some safety use nodeaddr, ~nodeaddr */
+		if (msgid == CMD_SAVE_CONFIG) {
+			unsigned char a = rs485_rxbuf[1];
+			unsigned char b = rs485_rxbuf[2];
+			if (a != tiny485_syscfg.nodeaddr || a != ~b)
+				goto invalidcmd; /* safety */
+			tiny485_syscfg_save();
+			rs485_start_tx(2); /* default ack reply */
+			goto rxok;
+		}
+
+invalidcmd:
+		/* txbuf[0] == nodeaddr (default, see above) */
+		rs485_txbuf[1] = '?';   /* reply with '?' instead of msgid */
+		rs485_txbuf[2] = msgid; /* command not understood */
+		rs485_start_tx(3);
 rxok:
 		rs485_rxok();
 	}

@@ -2,6 +2,7 @@
 #include "tiny485_syscfg.h"
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <string.h>
 
 #define BAUD 57600
 #define USE_U2X 1
