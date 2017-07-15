@@ -44,7 +44,7 @@ include $(OBJS:.o=.d)
 %.d : %.c
 	$(CC) $(CPPFLAGS) -o $@ -MM $^
 
-.PHONY : clean burn fuse
+.PHONY : clean burn fuse read_eeprom write_eeprom
 burn : $(MYNAME).hex
 	$(AVRDUDE) $(PROGRAMMER_DUDE) -p $(DEVICE_DUDE) -U flash:w:$^
 fuse :
@@ -54,6 +54,9 @@ fuse :
 read_eeprom :
 	$(AVRDUDE) $(PROGRAMMER_DUDE) -p $(DEVICE_DUDE) \
 		-U eeprom:r:eeprom.txt:h
+write_eeprom :
+	$(AVRDUDE) $(PROGRAMMER_DUDE) -p $(DEVICE_DUDE) \
+		-U eeprom:w:eeprom.txt:h
 
 clean :
 	rm -f *.bak *~ *.bin *.hex *.lst *.o *.d eeprom.txt
