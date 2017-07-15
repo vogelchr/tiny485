@@ -120,23 +120,27 @@ main()
 			goto rxok;
 		}
 
-		/* SET_NODEADDR has two parameters for safety. Use use
-		   address and the complement. */
-		if (msgid == CMD_SET_NODEADDR && msglen == 2) {
-			unsigned char a = rs485_rxbuf[1];
-			unsigned char b = rs485_rxbuf[2];
-			if (a != ~b)
+		if (msgid == CMD_SET_NODEADDR) {
+			unsigned char o,a,b;
+			if (msglen != 3)
 				goto invalidcmd;
+
+			o = ~rs485_rxbuf[1]; // inverse of old addr
+			a =  rs485_rxbuf[2]; // new addr
+			b = ~rs485_rxbuf[3]; // inverse of new addr
+			if (o != tiny485_syscfg.nodeaddr || a != b)
+				goto invalidcmd; /* safety */
 			tiny485_syscfg.nodeaddr = a;
 			rs485_start_tx(2); /* default ack reply */
 			goto rxok;
 		}
 
-		/* SAVE_CONFIG has some safety use nodeaddr, ~nodeaddr */
 		if (msgid == CMD_SAVE_CONFIG) {
-			unsigned char a = rs485_rxbuf[1];
-			unsigned char b = rs485_rxbuf[2];
-			if (a != tiny485_syscfg.nodeaddr || a != ~b)
+			unsigned char o;
+			if (msglen != 1)
+				goto invalidcmd;
+			o = ~rs485_rxbuf[1]; // inverse of old addr
+			if (o != tiny485_syscfg.nodeaddr)
 				goto invalidcmd; /* safety */
 			tiny485_syscfg_save();
 			rs485_start_tx(2); /* default ack reply */
