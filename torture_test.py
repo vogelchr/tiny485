@@ -5,71 +5,12 @@ import datetime
 import random
 import binascii
 import os
+import argparse
 
-SOH = b'\001'
-STX = b'\002'
-ETX = b'\003'
-EOT = b'\004'
-ESC = b'\033'
+from rs485_proto import RS485_Interface
 
 def nowstr() :
     return datetime.datetime.now().strftime('%H:%M:%S.%f')
-
-def encode_bytes(b) :
-    ba = bytearray()
-    for c in b :
-        if c < 0x20 :
-            ba.append(0x1b)
-            ba.append(c ^ 0x20)
-        else :
-            ba.append(c)
-    return bytes(ba) 
-
-RXSTATE_IDLE = 0
-RXSTATE_PAYLOAD = 2
-RXSTATE_ESC = 3
-
-class RS485_Interface :
-
-    def __init__(self, tty) :
-        self.tty = tty
-        self.read_state = 0
-        self.rxbuf = bytearray()
-        self.rxstate = 0
-
-    def transmit(self, id, msg) :
-        d = SOH + encode_bytes([id]) + encode_bytes(msg) + EOT
-        self.tty.write(d)
-
-    def poll(self) :
-        while True :
-            c = self.tty.read(1)
-            if not c :
-                return
-            if c == STX :
-                if self.rxstate != RXSTATE_IDLE :
-                    print('Received STX while not idle!')
-                self.rxbuf.clear()
-                self.rxstate = RXSTATE_PAYLOAD
-            elif c == ETX :
-                if self.rxstate != RXSTATE_PAYLOAD :
-                    print('Received ETX while not waiting for payload!')
-                self.rxstate = RXSTATE_IDLE
-                return bytes(self.rxbuf)
-            elif c == ESC :
-                if self.rxstate != RXSTATE_PAYLOAD :
-                    print('Received ESC while not waiting for payload!')
-                    self.rxstate = RXSTATE_IDLE
-                self.rxstate = RXSTATE_ESC
-            else :
-                if self.rxstate == RXSTATE_ESC :
-                    self.rxbuf.append( c[0] ^ 0x20 )
-                    self.rxstate = RXSTATE_PAYLOAD
-                elif self.rxstate == RXSTATE_PAYLOAD :
-                    self.rxbuf += c
-                else :
-                    print('Character', c[0], 'unexpected!')
-        return None
 
 
 def maybe_write_junk(tty) :
@@ -79,7 +20,14 @@ def maybe_write_junk(tty) :
         tty.write(os.urandom(random.randint(0,15)))
 
 def main() :
-    tty = serial.Serial('/dev/ttyUSB0', 57600, timeout=0.05)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dev', default='/dev/ttyUSB0', help='Serial Device (def: usb0)')
+    parser.add_argument('--baud', default=57600, type=int, help='Baudrate (def: 57k6')
+    parser.add_argument('--node', default=0x40, type=int, help='Node ID (def: 0x40)')
+    args = parser.parse_args()
+
+    tty = serial.Serial(args.dev, args.baud, timeout=0.05)
     rs485 = RS485_Interface(tty)
 
     chipid = 0
