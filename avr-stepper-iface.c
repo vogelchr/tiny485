@@ -1,5 +1,6 @@
 #include "rs485.h"
 #include "tiny485_syscfg.h"
+#include "stepper.h"
 
 #include <avr/io.h>
 #include <avr/cpufunc.h>
@@ -45,22 +46,6 @@ servo_pwm_init()
 	DDRB  |= _BV(3); /* PB3 = OC1A */
 }
 
-ISR(TIMER0_OVF_vect) {
-	PORTB ^= _BV(0);
-}
-
-static void
-clock_tick_init()
-{
-	/* 125 cycles @ 8 MHz / 64 = 1ms */
-	OCR0A = 124;
-	/* fast PWM mode, TOP=OCR0A, TOV flag set on TOP */
-	TCCR0A = _BV(WGM01)|_BV(WGM00);
-	TCCR0B = _BV(WGM02)|_BV(CS01)|_BV(CS00);  /* clkIO/64 */
-	TIMSK = _BV(TOIE0); /* timer overflow interrupt enable */
-	DDRB |= _BV(0);
-}
-
 int
 main()
 {
@@ -70,7 +55,7 @@ main()
 	tiny485_syscfg_init();
 	rs485_init();
 	servo_pwm_init();
-	clock_tick_init();
+	stepper_init();
 
 	sei(); /* enable interrupts */
 

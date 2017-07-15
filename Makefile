@@ -23,7 +23,7 @@ CFLAGS=-mmcu=$(DEVICE_CC) -Os -Wall -g3 -ggdb -DF_CPU=8000000UL
 
 MYNAME=avr-stepper-iface
 
-OBJS=$(MYNAME).o rs485.o tiny485_syscfg.o
+OBJS=$(MYNAME).o rs485.o tiny485_syscfg.o stepper.o
 
 all : $(MYNAME).hex $(MYNAME).lst
 
