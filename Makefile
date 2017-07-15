@@ -56,4 +56,4 @@ read_eeprom :
 		-U eeprom:r:eeprom.txt:h
 
 clean :
-	rm -f *.bak *~ *.bin *.hex *.lst *.o *.d
+	rm -f *.bak *~ *.bin *.hex *.lst *.o *.d eeprom.txt
