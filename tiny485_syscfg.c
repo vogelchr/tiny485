@@ -3,6 +3,16 @@
 #include <avr/io.h>
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
+#include <stdint.h>
+
+#ifdef __AVR_ATtiny2313__
+#define EEPROM_SIZE 128
+#else
+#error Unknown eeprom size.
+#endif
+
+#define EEPROM_PTR_MAGIC (uint8_t *)(EEPROM_SIZE-1)
+#define EEPROM_VAL_MAGIC 0xa5
 
 struct tiny485_syscfg tiny485_syscfg;
 
@@ -20,22 +30,17 @@ struct tiny485_syscfg tiny485_syscfg_defaults = {
 void
 tiny485_syscfg_init()
 {
-	/* FIXME: this needs to be properly thought through, which pins
-	 * to use for "reset to defaults" function
-	 */
-#if 0
-	if (PINA & _BV(0)) {
-		/* if pin is high, read from eeprom */
-#endif
+	uint8_t eeprom_magic;
+
+	eeprom_magic = eeprom_read_byte(EEPROM_PTR_MAGIC);		
+	if (eeprom_magic == 0xa5) {
 		eeprom_read_block(&tiny485_syscfg, NULL, sizeof(tiny485_syscfg));
-#if 0
 	} else {
-		/* read defaults from flash */
 		memcpy_P(&tiny485_syscfg, &tiny485_syscfg_defaults,
 			sizeof(struct tiny485_syscfg));
+		tiny485_syscfg_save();
+		eeprom_write_byte(EEPROM_PTR_MAGIC, EEPROM_VAL_MAGIC);
 	}
-#endif
-	tiny485_syscfg.nodeaddr = 0x40;
 }
 
 void
