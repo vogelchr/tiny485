@@ -23,6 +23,10 @@ struct tiny485_syscfg tiny485_syscfg_defaults = {
 		.pwm1 = 1000,
 		.pwm2 = 2000,
 		.maxcnt = 19999
+	},
+	.stepper = {
+		.minpos = 96,
+		.maxpos = 7680
 	}
 };
 

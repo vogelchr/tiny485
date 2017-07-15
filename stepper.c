@@ -1,4 +1,5 @@
 #include "stepper.h"
+#include "tiny485_syscfg.h"
 #include <avr/interrupt.h>
 #include <avr/io.h>
 #include <avr/pgmspace.h>
@@ -49,8 +50,18 @@ static const unsigned char PROGMEM stepper_step_table[] = {
 	0b001, /*  0    0      1   */
 };
 
-unsigned char stepper_on;
+enum stepper_state {
+	STEPPER_OFF = 0,
+	STEPPER_ON  = 1,
+	STEPPER_ZEROING = 2
+};
+enum stepper_state stepper_state;
+
 static char stepper_micstep;
+
+uint16_t    stepper_target;
+uint16_t    stepper_pos;
+static uint8_t stepper_ramp;
 
 #define MICSTEP_SHIFT 3
 #define MICSTEP_MAX   (sizeof(stepper_step_table) << MICSTEP_SHIFT)
@@ -70,11 +81,12 @@ stepper_advance(int8_t delta)
 		sstep -= MICSTEP_MAX;
 	micstep = sstep;
 
-	if (stepper_on) {
+	if (stepper_state == STEPPER_OFF)
+		v = 0;
+	else {
 		ix = micstep >> MICSTEP_SHIFT;
 		v = pgm_read_byte(stepper_step_table+ix);
-	} else
-		v = 0;
+	}
 
 	if (v & PIN1_MASK)
 		PORT_P1 |= BIT_P1;
@@ -97,19 +109,22 @@ stepper_advance(int8_t delta)
 	stepper_micstep = micstep;
 }
 
-uint16_t    stepper_target;
-uint16_t    stepper_pos;
-static uint8_t stepper_ramp;
-
 ISR(TIMER0_OVF_vect) {
 	signed char dir=0;
 	uint16_t target, pos, delta;
 	uint8_t  ramp;
-	uint8_t  scale;
+	enum stepper_state state;
 
 	target = stepper_target;
 	pos = stepper_pos;
 	ramp = stepper_ramp;
+	state = stepper_state;
+
+	if (target == pos && state == STEPPER_ZEROING) {
+		target = tiny485_syscfg.stepper.minpos;
+		stepper_target = target;
+		state = STEPPER_ON;
+	}
 
 	/* get absolute delta */
 	if (pos < target) {
@@ -134,14 +149,24 @@ ISR(TIMER0_OVF_vect) {
 		dir = -ramp;
 		pos -= ramp;
 	}
+
 	stepper_advance(dir);
 	stepper_pos = pos;
+	stepper_state = state;
 }
 
 void
 stepper_init()
 {
-	stepper_off();
+	DDR_P1 |= BIT_P1;
+	DDR_P2 |= BIT_P2;
+	DDR_P3 |= BIT_P3;
+	DDR_P4 |= BIT_P4;
+
+	stepper_state = STEPPER_ZEROING;
+	stepper_target = 0;
+	stepper_pos = tiny485_syscfg.stepper.maxpos + 96;
+
 //	OCR0A = 124; /* 125 cycles @ 8 MHz / 64 = 1ms */
 	OCR0A =  62; /*  63 cycles @ 8 MHz / 64 = 0.5 ms */
 	/* fast PWM mode, TOP=OCR0A, TOV flag set on TOP */
@@ -158,7 +183,15 @@ void
 stepper_goto(uint16_t g)
 {
 	cli();
-	stepper_on = 1;
+	/* ignore while zeroing */
+	if (stepper_state == STEPPER_ZEROING)
+		return;
+	if (g > tiny485_syscfg.stepper.maxpos)
+		g = tiny485_syscfg.stepper.maxpos;
+	if (g < tiny485_syscfg.stepper.minpos )
+		g = tiny485_syscfg.stepper.minpos;
+
+	stepper_state = STEPPER_ON;
 	stepper_target = g;
 	sei();
 }
@@ -167,9 +200,9 @@ void
 stepper_zero(uint16_t v)
 {
 	cli();
-	stepper_on = 1;
+	stepper_state = STEPPER_ZEROING;
 	stepper_target = 0;
-	stepper_pos = v;
+	stepper_pos = tiny485_syscfg.stepper.maxpos + 96;
 	sei();
 }
 
@@ -178,17 +211,11 @@ stepper_off()
 {
 	cli();
 	stepper_target = stepper_pos;
-	stepper_on = 0;
+	stepper_state = STEPPER_OFF;
 	/* also used for init */
 	PORT_P1 &= ~BIT_P1;
 	PORT_P2 &= ~BIT_P2;
 	PORT_P3 &= ~BIT_P3;
 	PORT_P4 &= ~BIT_P4;	
-	DDR_P1 |= BIT_P1;
-	DDR_P2 |= BIT_P2;
-	DDR_P3 |= BIT_P3;
-	DDR_P4 |= BIT_P4;
 	sei();
-
-	DDRD |= _BV(6);	
 }
