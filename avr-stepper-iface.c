@@ -106,16 +106,17 @@ main()
 		if (msgid == CMD_SERVO) {
 			/* must be <= 6 bytes and an even number of bytes */
 			if (msglen > sizeof(tiny485_syscfg.servo) || (msglen & 0x01))
-				goto rxok;
-			memcpy(&tiny485_syscfg.servo, &rs485_rxbuf[1], msglen);
+				goto invalidcmd;
+			memcpy(&tiny485_syscfg.servo, rs485_rxbuf+1, msglen);
+			/* no reply, no need to hog the bus */
 			servo_pwm_update();
 			goto rxok;
 		}
 
 		if (msgid == CMD_QUERY_SERVO) {
-			memcpy(&rs485_txbuf+2, &tiny485_syscfg.servo,
+			memcpy(rs485_txbuf+2, &tiny485_syscfg.servo,
 				sizeof(tiny485_syscfg.servo));
-			rs485_start_tx(2+sizeof(tiny485_syscfg.servo));
+				rs485_start_tx(2+sizeof(tiny485_syscfg.servo));
 			goto rxok;
 		}
 
