@@ -22,6 +22,30 @@ class Timeout :
             return True
         return False
 
+def get_commands(clt, timeout_sec=1.0) :
+    to = Timeout(timeout_sec)
+    while True :
+        msg = clt.poll()
+        if to.check() :
+            return
+        if msg == None :
+            continue
+        yield msg
+
+def wait_for_ack(clt, node, cmdid) :
+    if type(cmdid) == bytes :
+        cmdid = cmdid[0] # int
+    for msg in get_commands(clt) :
+        if len(msg) != 2 :
+            print('Invalid msg received, expected ACK, but wrong length.')
+            print(msg)
+            continue
+        ack_node, ack_cmd = struct.unpack('<BB', msg)
+        if ack_node == node and ack_cmd == cmdid :
+            print('Acknowledge received.')
+            break;
+        print('Unexpected message received:', msg, ack_node, ack_cmd)
+
 def main() :
     import argparse
     parser = argparse.ArgumentParser()
@@ -47,6 +71,17 @@ def main() :
         help='Command: Set servo output(s), times in usec.')
     parser.add_argument('--save-config', default=False,
         action='store_true', help='Command: Save config to eeprom.')
+
+    parser.add_argument('--stepper-goto', default=None,
+        type=int, help='Command: Goto stepper position.')
+    parser.add_argument('--stepper-off', default=False,
+        action='store_true', help='Command: Turn off stepper coils.')
+    parser.add_argument('--stepper-zero', default=None,
+        type=int, help='Command: Zero stepper, go left N steps.')
+    parser.add_argument('--stepper-get', default=False,
+        action='store_true', help='Command: Get stepper position.')
+
+
 
     args = parser.parse_args()
     tty = serial.Serial(args.dev, args.baud, timeout=0.01)
@@ -139,49 +174,43 @@ def main() :
         b = a ^ 0xff
         cmd = struct.pack('cBBB', b'A', o, a, b)
         clt.transmit(args.node, cmd)
-        to = Timeout(1.0)
-        while True :
-            msg = clt.poll()
-            if to.check() :
-                print('Timeout waiting for answer!')
-                sys.exit(1);
-            if msg == None :
-                continue
-            if len(msg) != 2 :
-                print('Invalid msg received, expected ACK, but wrong length.')
-                print(msg)
-                continue
-            ack_node, ack_cmd = struct.unpack('<Bc', msg)
-            if ack_node == args.node and ack_cmd == b'A' :
-                print('Acknowledge received.')
-                break;
+        wait_for_ack(clt, args.node, b'A')
 
     if args.save_config :
         a = args.node ^ 0xff
         cmd = struct.pack('cB', b'C', a)
         clt.transmit(args.node, cmd)
-        to = Timeout(1.0)
-        while True :
-            msg = clt.poll()
-            if to.check() :
-                print('Timeout waiting for answer!')
-                sys.exit(1);
-            if msg == None :
-                continue
-            if len(msg) != 2 :
-                print('Invalid msg received, expected ACK, but wrong length.')
+        wait_for_ack(clt, args.node, b'C')
+
+    if args.stepper_goto is not None :
+        cmd = struct.pack('<cH', b'G', args.stepper_goto)
+        clt.transmit(args.node, cmd)
+        time.sleep(0.1)
+
+    if args.stepper_zero :
+        cmd = struct.pack('<cH', b'Z', args.stepper_zero)
+        clt.transmit(args.node, cmd)
+        wait_for_ack(clt, args.node, b'Z')
+
+    if args.stepper_off :
+        clt.transmit(args.node, b'O')
+        wait_for_ack(clt, args.node, b'O')
+
+    if args.stepper_get :
+        clt.transmit(args.node, b'E')
+        for msg in get_commands(clt) :
+            if len(msg) != 6 :
+                print('Invalid msg received, expected stepper positions, but wrong length.')
                 print(msg)
                 continue
-            ack_node, ack_cmd = struct.unpack('<Bc', msg)
-            if ack_node == args.node and ack_cmd == b'C' :
-                print('Acknowledge received.')
-                break;
-            print('Unexpected message received:', msg)
-
-
-
-
-
+            ack_node, ack_cmd, pos, target = struct.unpack('<BBHH', msg)
+            if ack_node != args.node or ack_cmd != b'E'[0] :
+                print('Invlid answer received:', msg, ack_node, ack_cmd)
+                continue;
+            print('Node %d servo position:'%(args.node))
+            print('  Position: %d'%pos)
+            print('  Target:   %d'%target)
+            break
 
 if __name__ == '__main__' :
     main()
