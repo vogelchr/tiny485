@@ -45,7 +45,8 @@ def main() :
         metavar="s1[,s2[,period]]",
         default=None, type=str,
         help='Command: Set servo output(s), times in usec.')
-
+    parser.add_argument('--save-config', default=False,
+        action='store_true', help='Command: Save config to eeprom.')
 
     args = parser.parse_args()
     tty = serial.Serial(args.dev, args.baud, timeout=0.01)
@@ -107,8 +108,8 @@ def main() :
 
     if args.get_servo or args.set_servo :
         to = Timeout(1.0)
+        clt.transmit(args.node, b'Q')
         while True :
-            clt.transmit(args.node, b'Q')
             msg = clt.poll()
             if to.check() :
                 print('Timeout waiting for answer!')
@@ -130,6 +131,55 @@ def main() :
             print('  Servo 2 Output: %6d usec'%s2)
             print('  Pulse period:   %6d usec'%(per+1))
             break
+
+    if args.set_node is not None : # may be nodeid 0!
+        print('Change address of node %d to %d.'%(args.node, args.set_node))
+        o = args.node ^ 0xff
+        a = args.set_node
+        b = a ^ 0xff
+        cmd = struct.pack('cBBB', b'A', o, a, b)
+        clt.transmit(args.node, cmd)
+        to = Timeout(1.0)
+        while True :
+            msg = clt.poll()
+            if to.check() :
+                print('Timeout waiting for answer!')
+                sys.exit(1);
+            if msg == None :
+                continue
+            if len(msg) != 2 :
+                print('Invalid msg received, expected ACK, but wrong length.')
+                print(msg)
+                continue
+            ack_node, ack_cmd = struct.unpack('<Bc', msg)
+            if ack_node == args.node and ack_cmd == b'A' :
+                print('Acknowledge received.')
+                break;
+
+    if args.save_config :
+        a = args.node ^ 0xff
+        cmd = struct.pack('cB', b'C', a)
+        clt.transmit(args.node, cmd)
+        to = Timeout(1.0)
+        while True :
+            msg = clt.poll()
+            if to.check() :
+                print('Timeout waiting for answer!')
+                sys.exit(1);
+            if msg == None :
+                continue
+            if len(msg) != 2 :
+                print('Invalid msg received, expected ACK, but wrong length.')
+                print(msg)
+                continue
+            ack_node, ack_cmd = struct.unpack('<Bc', msg)
+            if ack_node == args.node and ack_cmd == b'C' :
+                print('Acknowledge received.')
+                break;
+            print('Unexpected message received:', msg)
+
+
+
 
 
 
