@@ -18,8 +18,8 @@ LD=avr-gcc
 SIZE=avr-size
 
 LDFLAGS=-Wall -mmcu=$(DEVICE_CC)
-CPPFLAGS=
-CFLAGS=-mmcu=$(DEVICE_CC) -Os -Wall -g3 -ggdb -DF_CPU=8000000UL
+CPPFLAGS=-mmcu=$(DEVICE_CC)
+CFLAGS=-Os -Wall -g3 -ggdb -DF_CPU=8000000UL
 
 MYNAME=avr-stepper-iface
 
@@ -42,7 +42,7 @@ $(MYNAME).bin : $(OBJS)
 include $(OBJS:.o=.d)
 
 %.d : %.c
-	$(CC) -o $@ -MM $^
+	$(CC) $(CPPFLAGS) -o $@ -MM $^
 
 .PHONY : clean burn fuse
 burn : $(MYNAME).hex
@@ -51,5 +51,9 @@ fuse :
 	$(AVRDUDE) $(PROGRAMMER_DUDE) -p $(DEVICE_DUDE) \
 		-U lfuse:w:$(FUSE_L):m -U hfuse:w:$(FUSE_H):m \
 		-U efuse:w:$(FUSE_E):m
+read_eeprom :
+	$(AVRDUDE) $(PROGRAMMER_DUDE) -p $(DEVICE_DUDE) \
+		-U eeprom:r:eeprom.txt:h
+
 clean :
 	rm -f *.bak *~ *.bin *.hex *.lst *.o *.d
