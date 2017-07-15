@@ -214,7 +214,7 @@ ISR(USART_UDRE_vect)
 			state = RS485_TX_PAYLOAD;
 			c ^= ASCII_LOW;
 		} else {
-			if (c < ASCII_LOW) {
+			if (c <= ASCII_EOT || c == ASCII_ESC) {
 				state = RS485_TX_ESC;
 				c = ASCII_ESC;
 				goto write_udr;
