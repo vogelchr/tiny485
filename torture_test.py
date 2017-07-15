@@ -67,6 +67,7 @@ def main() :
             if sent_msg :
                 if not recvd_msg :
                     print('Had sent a message, but got no reply!')
+                    print(binascii.hexlify(lastmsg))
                     cnt_noreply += 1
             sent_msg = False
             recvd_msg = False
@@ -82,9 +83,9 @@ def main() :
         if not recvmsg :
             continue
         if recvmsg != lastmsg :
-            print('Messages are not equal. Sent', 
-                binascii.hexlify(lastmsg), 'and received',
-                binascii.hexlify(recvmsg), '.')
+            print('Messages are not equal.')
+            print(' Sent:', binascii.hexlify(lastmsg))
+            print(' Recv:', binascii.hexlify(recvmsg))
             cnt_msgnoneq += 1
         else :
             print('%s Message %-32s (chip %02x) read back correctly.'%(
