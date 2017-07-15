@@ -30,6 +30,10 @@ enum AVR_STEPPER_IFACE_CMDS {
 	CMD_QUERY_SERVO  = 'Q',
 	CMD_SET_NODEADDR = 'A',
 	CMD_SAVE_CONFIG  = 'C',
+	CMD_STEPPER_GOTO = 'G',
+	CMD_STEPPER_ZERO = 'Z',
+	CMD_STEPPER_OFF  = 'O',
+	CMD_STEPPER_GET  = 'E'
 };
 
 static void
@@ -116,7 +120,7 @@ main()
 		if (msgid == CMD_QUERY_SERVO) {
 			memcpy(rs485_txbuf+2, &tiny485_syscfg.servo,
 				sizeof(tiny485_syscfg.servo));
-				rs485_start_tx(2+sizeof(tiny485_syscfg.servo));
+			rs485_start_tx(2+sizeof(tiny485_syscfg.servo));
 			goto rxok;
 		}
 
@@ -124,7 +128,6 @@ main()
 			unsigned char o,a,b;
 			if (msglen != 3)
 				goto invalidcmd;
-
 			o = ~rs485_rxbuf[1]; // inverse of old addr
 			a =  rs485_rxbuf[2]; // new addr
 			b = ~rs485_rxbuf[3]; // inverse of new addr
@@ -144,6 +147,42 @@ main()
 				goto invalidcmd; /* safety */
 			tiny485_syscfg_save();
 			rs485_start_tx(2); /* default ack reply */
+			goto rxok;
+		}
+
+		if (msgid == CMD_STEPPER_GOTO) {
+			uint16_t v;
+			if (msglen != 2)
+				goto invalidcmd;
+			v = (rs485_rxbuf[2] << 8)|rs485_rxbuf[1]; /* big end. */
+			stepper_goto(v);
+			goto rxok;
+		}
+
+		if (msgid == CMD_STEPPER_ZERO) {
+			uint16_t v;
+			if (msglen != 2)
+				goto invalidcmd;
+			v = (rs485_rxbuf[2] << 8)|rs485_rxbuf[1]; /* little end. */
+			stepper_zero(v);
+			rs485_start_tx(2); /* default ack reply */
+			goto rxok;
+		}
+
+		if (msgid == CMD_STEPPER_OFF) {
+			stepper_off();
+			rs485_start_tx(2); /* default ack reply */
+			goto rxok;
+		}
+
+		if (msgid == CMD_STEPPER_GET) {
+			cli();
+			rs485_txbuf[2] =  stepper_pos & 0xff;
+			rs485_txbuf[3] = (stepper_pos >> 8) & 0xff;
+			rs485_txbuf[4] =  stepper_target & 0xff;
+			rs485_txbuf[5] = (stepper_target >> 8) & 0xff;
+			sei();
+			rs485_start_tx(6);
 			goto rxok;
 		}
 
