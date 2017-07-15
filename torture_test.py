@@ -72,7 +72,7 @@ def main() :
             recvd_msg = False
 
             chipid = random.randint(0x40,0x42)
-            lastmsg = b'\1'+os.urandom(random.randint(0,15))
+            lastmsg = b'P'+os.urandom(random.randint(0,15))
             rs485.transmit(chipid, lastmsg)
 
             if chipid == 0x40 :

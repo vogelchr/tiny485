@@ -7,12 +7,29 @@
 #include <avr/interrupt.h>
 #include <string.h>
 
+/*
+ *                      +----u----+
+ *            \Reset .. | 1    20 | -- Vcc
+ *         RS485-RxD D0 | 2    19 | B7 SCL
+ *         RS485-TxD D1 | 3    18 | B6 MISO
+ *       Rotary-in-3 A1 | 4    17 | B5 MOSI
+ *       Rotary-in-4 A0 | 5    16 | B4 Servos-5
+ *      RS485-DR/\RE D2 | 6    15 | B3 Servos-6
+ *         Stepper-4 D3 | 7    14 | B2 Led-Mosfet-G
+ *         Stepper-4 D3 | 7    14 | B2 Led-Mosfet-G
+ *         Stepper-3 D4 | 8    13 | B1 Stepper-1
+ *                   D5 | 9    12 | B0 Stepper-2
+ *               GND -- | 10   11 | D6 Led-Out-5
+ *                      +---------+
+ *
+ */
+
 enum AVR_STEPPER_IFACE_CMDS {
-	CMD_PING,
-	CMD_SERVO,
-	CMD_QUERY_SERVO,
-	CMD_SET_NODEADDR,
-	CMD_SAVE_CONFIG
+	CMD_PING         = 'P',
+	CMD_SERVO        = 'S', 
+	CMD_QUERY_SERVO  = 'Q',
+	CMD_SET_NODEADDR = 'A',
+	CMD_SAVE_CONFIG  = 'C',
 };
 
 static void
