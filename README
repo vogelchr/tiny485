@@ -1,0 +1,49 @@
+tiny485 - a simple protocol on rs485 to address a bunch of
+          circuit boards with tiny2313s on them
+
+
+The protocol uses 5 of the control characters defined in ASCII as ...
+
+   Ctrl-A  0x01 ␁ SOH Start of Heading
+   Ctrl-B  0x02 ␂ STX Start of Text
+   Ctrl-C  0x03 ␃ EOT End of Text
+   Ctrl-D  0x04 ␄ EOT End of Transmission
+   Ctrl-[  0x1b ␛ ESC Escape
+
+
+A COMMAND from MASTER to SLAVE:
+
+  SOH <address> <payload> EOT
+
+Only *if* there is an ANSWER from SLAVE to MASTER, the answer
+is encoded as:
+
+  STX <payload> ETX
+
+<payload> only contains characters != SOH, ETC, STX, ETX or ESC. If any
+of these characters would appear on the wire, they have to be escaped
+by <ESC> and their bit 0x20 inverted. So...
+
+  0x01 --> 0x1b 0x21
+  0x02 --> 0x1b 0x22
+  0x03 --> 0x1b 0x23
+  0x04 --> 0x1b 0x24
+  0x1b --> 0x1b 0x3b
+
+In practice, you can escape all bytes you fancy and the receiver will
+flip the bit 0x20 for everything that's escaped by ESC.
+
+Typically the payload in the COMMAND is ...
+
+   <cmdid> <cmd payload...>
+
+and on receiving an unknown command the payload of the ANSWER is ...
+
+   '?' <msgid> .
+
+The default acknowledge (if you are incline do implement it) should
+be an ANSWER with a payload of
+
+   <nodeaddr> <msgid> .
+
+
