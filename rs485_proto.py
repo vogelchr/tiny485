@@ -15,7 +15,7 @@ RXSTATE_ESC = 3
 def encode_bytes(b) :
     ba = bytearray()
     for c in b :
-        if c < 0x20 :
+        if c <= 0x04 or c == 0x1b :
             ba.append(0x1b)
             ba.append(c ^ 0x20)
         else :
