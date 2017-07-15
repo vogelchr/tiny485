@@ -17,7 +17,7 @@
  *      RS485-DR/\RE D2 | 6    15 | B3 Servos-6
  *         Stepper-4 D3 | 7    14 | B2 Led-Mosfet-G
  *         Stepper-4 D3 | 7    14 | B2 Led-Mosfet-G
- *         Stepper-3 D4 | 8    13 | B1 Stepper-1
+ *                   D4 | 8    13 | B1 Stepper-1
  *                   D5 | 9    12 | B0 Stepper-2
  *               GND -- | 10   11 | D6 Led-Out-5
  *                      +---------+
